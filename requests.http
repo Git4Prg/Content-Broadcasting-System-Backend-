@@ -1,0 +1,58 @@
+### 1. Register a Teacher
+# @name registerTeacher
+POST http://localhost:3000/api/auth/register
+Content-Type: application/json
+
+{
+  "name": "Mr. Smith",
+  "email": "teacher1@school.com",
+  "password": "password123",
+  "role": "teacher"
+}
+
+### 2. Login as the Teacher
+# @name teacherLogin
+POST http://localhost:3000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "teacher1@school.com",
+  "password": "password123"
+}
+
+### 3. Login as the Default Principal (created automatically on DB sync)
+# @name principalLogin
+POST http://localhost:3000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "principal@school.com",
+  "password": "principal123"
+}
+
+### 4. Upload Content (Teacher)
+# Note: Since this requires a file upload (multipart/form-data), it's easiest to test this specific route using Postman.
+# Set Authorization: Bearer <Teacher_Token_Here>
+# Set Body to form-data:
+# - title: "Maths Chapter 1"
+# - subject: "Maths"
+# - file: [Select an image file]
+# - start_time: "2024-01-01T00:00:00.000Z" (Optional)
+# - end_time: "2028-01-01T00:00:00.000Z" (Optional)
+# - rotation_duration: 5 (Optional)
+
+### 5. View My Content (Teacher)
+GET http://localhost:3000/api/content/my-content
+Authorization: Bearer <Replace_With_Teacher_Token>
+
+### 6. View Pending Content (Principal)
+GET http://localhost:3000/api/approval/pending
+Authorization: Bearer <Replace_With_Principal_Token>
+
+### 7. Approve Content (Principal)
+PUT http://localhost:3000/api/approval/<Replace_With_Content_ID>/approve
+Authorization: Bearer <Replace_With_Principal_Token>
+
+### 8. View Live Broadcasting API (Public)
+# Replace with the Teacher's ID from Step 1
+GET http://localhost:3000/content/live/<Replace_With_Teacher_ID>

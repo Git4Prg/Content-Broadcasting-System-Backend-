@@ -1,0 +1,60 @@
+# Content Broadcasting System - Architecture Notes
+
+## Authentication & RBAC flow
+- We use JWT (JSON Web Tokens) for authenticating users.
+- Upon login, a token is generated containing the user's ID and Role.
+- RBAC is enforced through a middleware `authorizeRole` which checks if the authenticated user's role matches the required role for the route (e.g., 'teacher' vs 'principal').
+- Passwords are securely hashed using bcrypt.
+- **Security Note**: The public `/register` endpoint strictly only allows 'teacher' registrations. The 'principal' account is automatically seeded directly into the database on the first server start to prevent malicious users from granting themselves admin privileges.
+
+## Subject-based system design
+- Content is strictly associated with a 'subject' during upload.
+- Broadcasting handles subjects independently. When `/content/live/:teacherId` is queried, it fetches all approved, active content for the teacher. 
+- Content is grouped by subject before applying the rotation logic, ensuring that each subject operates on its own independent timeline and loop.
+
+## Upload handling approach
+- Multer middleware is used to handle `multipart/form-data`.
+- We enforce strict file filters (only `image/jpeg`, `image/png`, and `image/gif` allowed).
+- Max file size is constrained to 10MB.
+- Files are saved to local storage under an `uploads/` directory with a timestamp prefixed to avoid name collisions.
+
+## Approval workflow design
+- Content has a linear status lifecycle: `uploaded` -> `pending` -> `approved` / `rejected`.
+- The upload sets status to `pending` immediately.
+- Only the `principal` role can access the `/approval` routes to approve or reject content.
+- If rejected, a `rejection_reason` must be provided and stored.
+- Once approved, the system generates a `ContentSchedule` record for that content, associating it with the appropriate `ContentSlot` for its subject.
+
+## Scheduling/rotation logic (VERY IMPORTANT)
+- A continuously looping timeline is simulated mathematically rather than relying on heavy cron jobs or background processes.
+- The `start_time` and `end_time` of a content determine if it is eligible for broadcast at all (the "active time window").
+- Eligible content for a subject is fetched and sorted by its `rotation_order`.
+- The duration of each content in a subject forms a total "cycle duration".
+- Using the current Unix Epoch time `now % total_cycle_duration`, we calculate the exact position within the looping cycle.
+- The system checks this position against the accumulated duration of the ordered content items to deterministically resolve which single item is active for that subject right now.
+- This ensures seamless, synchronized rotation without database updates every 5 minutes.
+
+## Database design decisions
+- **Users Table**: Stores principals and teachers with enum roles.
+- **Content Table**: Stores the metadata of uploaded content, including the scheduling window (`start_time`, `end_time`), `rotation_duration`, and approval status.
+- **ContentSlot Table**: Unique constraint on `subject` acts as a bucket/channel for that subject's content loop.
+- **ContentSchedule Table**: Links `Content` and `ContentSlot`, storing the exact `rotation_order` and `duration` for the broadcast cycle.
+
+## Folder structure
+- `src/controllers/`: Contains business logic for handling requests and responses.
+- `src/models/`: Sequelize models and relations defining the DB schema.
+- `src/routes/`: Express routers wiring HTTP paths to controllers.
+- `src/middlewares/`: Express middlewares for Auth and Upload handling.
+- `src/utils/`: Standardized response formatting and error handling helpers.
+- `src/config/`: Configuration setup like DB connections.
+
+## Middleware usage
+- **Auth Middleware**: Verifies JWTs and parses the user object.
+- **Role Middleware**: Checks role access against allowed roles.
+- **Upload Middleware**: Validates file MIME types, enforces size limits, and handles disk storage.
+
+## Scalability approach
+- Stateless JWT authentication avoids session scaling issues.
+- The scheduling logic operates without background jobs, removing the need for workers and scaling naturally with web requests.
+- Images are served via static Express routes, but can easily be replaced with an AWS S3 integration + CloudFront CDN in the upload controller for horizontal scaling.
+- Caching tools like Redis could be wrapped around the public broadcasting endpoint `/content/live`, utilizing a TTL equal to the remaining duration of the currently active content to drastically reduce DB load.
